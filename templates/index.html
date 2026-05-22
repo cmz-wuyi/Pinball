@@ -219,6 +219,37 @@
   }
   .toast.show { opacity: 1; }
 
+  /* 弹窗样式 */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal-content {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 20px;
+    width: 90%;
+    max-width: 400px;
+  }
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .modal-actions button {
+    flex: 1;
+    margin-top: 0;
+  }
+
   .section-toggle {
     display: flex;
     justify-content: space-between;
@@ -242,16 +273,50 @@
 <!-- ====== Step 1: 配置 ====== -->
 <div id="setupPanel" class="card">
   <h2>⚙️ 机器参数</h2>
-  <div class="row">
-    <div>
-      <label>T（积分卡分母）</label>
-      <input type="number" id="inputT" value="30" min="1" max="9999">
+  
+  <div class="section-toggle" onclick="toggleSection(this, 'cardTiersSection')">
+    <span style="font-size:0.9em;color:var(--green);">📦 积分卡规则配置</span>
+  </div>
+  <div id="cardTiersSection">
+    <div style="font-size:0.78em;color:var(--muted);margin-bottom:8px;">
+      自定义积分卡规则（每N个返珠获得M张卡）
     </div>
-    <div>
-      <label>J（单次最大卡数）</label>
-      <input type="number" id="inputJ" value="3" min="1" max="9999">
+    <div id="cardTiersContainer">
+      <div class="card-tier-row row" style="margin-bottom:6px;">
+        <input type="number" id="tierThreshold0" placeholder="返珠阈值" value="20" min="1" style="width:45%;">
+        <span style="color:var(--muted);text-align:center;line-height:36px;">→</span>
+        <input type="number" id="tierCards0" placeholder="卡数" value="1" min="1" style="width:35%;">
+        <button class="btn-small btn-outline" style="width:auto;padding:6px 10px;" onclick="addCardTier()">+</button>
+      </div>
+      <div class="card-tier-row row" style="margin-bottom:6px;">
+        <input type="number" id="tierThreshold1" placeholder="返珠阈值" value="40" min="1" style="width:45%;">
+        <span style="color:var(--muted);text-align:center;line-height:36px;">→</span>
+        <input type="number" id="tierCards1" placeholder="卡数" value="2" min="1" style="width:35%;">
+        <button class="btn-small btn-outline" style="width:auto;padding:6px 10px;color:var(--yellow);" onclick="removeCardTier(this)">-</button>
+      </div>
+      <div class="card-tier-row row" style="margin-bottom:6px;">
+        <input type="number" id="tierThreshold2" placeholder="返珠阈值" value="60" min="1" style="width:45%;">
+        <span style="color:var(--muted);text-align:center;line-height:36px;">→</span>
+        <input type="number" id="tierCards2" placeholder="卡数" value="3" min="1" style="width:35%;">
+        <button class="btn-small btn-outline" style="width:auto;padding:6px 10px;color:var(--yellow);" onclick="removeCardTier(this)">-</button>
+      </div>
+    </div>
+    <div style="margin-top:8px;font-size:0.72em;color:var(--muted);">
+      示例: 100→1, 150→2, 200→3 表示 100返珠=1卡, 150返珠=2卡, 200返珠=3卡
     </div>
   </div>
+
+  <div class="row" style="margin-top:12px;">
+    <div>
+      <label>当前珠子数量</label>
+      <input type="number" id="inputMarbles" value="999" min="0" max="9999" placeholder="当前珠子数">
+    </div>
+    <div>
+      <label>最多投珠数</label>
+      <input type="number" id="inputMaxBet" value="99" min="5" max="99">
+    </div>
+  </div>
+  
   <div class="row">
     <div>
       <label>优先目标</label>
@@ -283,6 +348,14 @@
       <span id="configSummary" style="color:var(--muted);"></span>
       <button class="btn-small btn-outline" onclick="resetSetup()">重置</button>
     </div>
+    <!-- 珠子数量显示 -->
+    <div id="marbleDisplay" style="display:flex;justify-content:space-around;margin-top:8px;font-size:0.85em;align-items:center;">
+      <span style="cursor:pointer;" onclick="openMarbleModal()">当前珠子: <b id="currentMarblesVal" style="color:var(--green);text-decoration:underline;">0</b></span>
+      <button class="btn-small btn-outline" style="width:auto;padding:4px 10px;font-size:0.75em;" onclick="adjustMarbles(-10)">-10</button>
+      <button class="btn-small btn-outline" style="width:auto;padding:4px 10px;font-size:0.75em;" onclick="adjustMarbles(10)">+10</button>
+      <button class="btn-small btn-outline" style="width:auto;padding:4px 10px;font-size:0.75em;" onclick="adjustMarbles(-5)">-5</button>
+      <button class="btn-small btn-outline" style="width:auto;padding:4px 10px;font-size:0.75em;" onclick="adjustMarbles(5)">+5</button>
+    </div>
   </div>
 
   <!-- 新一局 -->
@@ -300,28 +373,33 @@
 
   <!-- 结果 -->
   <div id="resultPanel" class="card hidden">
-    <h2>📊 策略建议</h2>
-    <div class="big-number" id="betAdvice"></div>
-    <div style="text-align:center;color:var(--muted);font-size:0.85em;margin-top:-8px;">建议投珠数</div>
-    <div class="result-box">
-      <div class="result-row">
-        <span class="result-label">中奖概率</span>
-        <span class="result-value" id="resWinProb"></span>
-      </div>
-      <div class="result-row">
-        <span class="result-label">期望返珠</span>
-        <span class="result-value" id="resExpMarbles"></span>
-      </div>
-      <div class="result-row">
-        <span class="result-label">期望积分卡</span>
-        <span class="result-value" id="resExpCards"></span>
-      </div>
-      <div class="result-row">
-        <span class="result-label">珠子ROI</span>
-        <span class="result-value" id="resROI"></span>
-      </div>
+  <h2>📊 策略建议</h2>
+  <div class="big-number" id="betAdvice"></div>
+  <div style="text-align:center;color:var(--muted);font-size:0.85em;margin-top:-8px;">建议投珠数</div>
+  <div id="betWarning" style="text-align:center;color:var(--yellow);font-size:0.85em;margin-bottom:8px;display:none;"></div>
+  <div class="result-box">
+    <div class="result-row">
+      <span class="result-label">中奖概率</span>
+      <span class="result-value" id="resWinProb"></span>
     </div>
-    <div id="resTip" class="tip"></div>
+    <div class="result-row">
+      <span class="result-label">期望返珠</span>
+      <span class="result-value" id="resExpMarbles"></span>
+    </div>
+    <div class="result-row">
+      <span class="result-label">期望积分卡</span>
+      <span class="result-value" id="resExpCards"></span>
+    </div>
+    <div class="result-row">
+      <span class="result-label">珠子ROI</span>
+      <span class="result-value" id="resROI"></span>
+    </div>
+    <div class="result-row" id="resMaxBetRow">
+      <span class="result-label">最大可投</span>
+      <span class="result-value" id="resMaxBet"></span>
+    </div>
+  </div>
+  <div id="resTip" class="tip"></div>
 
     <!-- 记录结果 -->
     <div class="record-section">
@@ -363,6 +441,20 @@
   </div>
 </div>
 
+
+
+<!-- 修改珠子数弹窗 -->
+<div id="marbleModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:100;">
+  <div style="background:#1a1a2e;border-radius:12px;padding:20px;width:90%;max-width:400px;">
+    <h2 style="color:#4ade80;margin-bottom:12px;">修改珠子数</h2>
+    <input type="number" id="modalMarbleInput" value="0" min="0" max="9999" style="width:100%;padding:10px;border:1px solid #333;border-radius:8px;background:#0f0f1a;color:#fff;font-size:1.2em;">
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button onclick="document.getElementById('marbleModal').style.display='none'" style="flex:1;padding:12px;border-radius:8px;border:1px solid #4ade80;color:#4ade80;background:transparent;font-weight:600;cursor:pointer;">取消</button>
+      <button onclick="saveMarbleCount()" style="flex:1;padding:12px;border-radius:8px;background:#4ade80;color:#111;font-weight:600;cursor:pointer;">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast" class="toast"></div>
 
@@ -373,19 +465,77 @@ const MULT_SLOTS = {2:4, 4:3, 6:2, 8:1, 10:1};
 let selectedMult = null;
 let selectedLitSlots = new Set();
 let recordSlotSelected = null;
+let currentMarbles = 999;
+let cardTiers = [];
+let lastRec = null;
+
+function getCardTiers() {
+  const rows = document.querySelectorAll('.card-tier-row');
+  const tiers = [];
+  rows.forEach(row => {
+    const threshold = parseInt(row.querySelector('input[type=number]').value);
+    const cards = parseInt(row.querySelectorAll('input[type=number]')[1].value);
+    if (threshold && cards && threshold > 0 && cards > 0) {
+      tiers.push([threshold, cards]);
+    }
+  });
+  return tiers.sort((a, b) => a[0] - b[0]);
+}
+
+function addCardTier() {
+  const container = document.getElementById('cardTiersContainer');
+  const count = container.querySelectorAll('.card-tier-row').length;
+  const row = document.createElement('div');
+  row.className = 'card-tier-row row';
+  row.style.marginBottom = '6px';
+  row.innerHTML = `
+    <input type="number" placeholder="返珠阈值" value="${(count + 1) * 20}" min="1" style="width:45%;">
+    <span style="color:var(--muted);text-align:center;line-height:36px;">→</span>
+    <input type="number" placeholder="卡数" value="${count + 1}" min="1" style="width:35%;">
+    <button class="btn-small btn-outline" style="width:auto;padding:6px 10px;color:var(--yellow);" onclick="removeCardTier(this)">-</button>
+  `;
+  container.appendChild(row);
+}
+
+function removeCardTier(btn) {
+  const container = document.getElementById('cardTiersContainer');
+  const rows = container.querySelectorAll('.card-tier-row');
+  if (rows.length > 1) {
+    btn.parentElement.remove();
+  }
+}
 
 // ─── Init ───
 function initMachine() {
-  const T = parseInt(document.getElementById('inputT').value);
-  const J = parseInt(document.getElementById('inputJ').value);
+  const cardTiersData = getCardTiers();
   const priority = document.getElementById('inputPriority').value;
   const prior = parseFloat(document.getElementById('inputPrior').value);
   const ct = parseFloat(document.getElementById('inputCT').value);
+  const marbles = parseInt(document.getElementById('inputMarbles').value) || 999;
+  const maxBet = parseInt(document.getElementById('inputMaxBet').value) || 99;
+
+  currentMarbles = marbles;
+  cardTiers = cardTiersData;
+
+  const payload = {
+    priority,
+    prior_weight: prior,
+    confidence_threshold: ct,
+    current_marbles: marbles,
+    max_bet: maxBet,
+  };
+  
+  if (cardTiersData.length > 0) {
+    payload.card_tiers = cardTiersData;
+  } else {
+    payload.T = 20;
+    payload.J = 10;
+  }
 
   fetch('/api/init', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({T, J, priority, prior_weight: prior, confidence_threshold: ct})
+    body: JSON.stringify(payload)
   })
   .then(r => r.json())
   .then(data => {
@@ -393,13 +543,17 @@ function initMachine() {
     document.getElementById('setupPanel').classList.add('hidden');
     document.getElementById('gamePanel').classList.remove('hidden');
     const ctLabel = ct > 0 ? `V2(ct=${ct})` : '原始策略';
+    const tierSummary = cardTiersData.length > 0 ? 
+      `自定义规则: ${cardTiersData.map(t => t[0]+'→'+t[1]).join(', ')}` : 
+      `T=${data.T} J=${data.J}`;
     document.getElementById('configSummary').textContent =
-      `T=${T}  J=${J}  ${priority==='cards'?'积分卡优先':'珠子优先'}  ${ctLabel}`;
+      `${tierSummary}  当前:${marbles}珠  ${priority==='cards'?'积分卡优先':'珠子优先'}  ${ctLabel}`;
     buildMultButtons();
     buildSlotGrid();
     buildRecordGrid();
     renderEVTable(data.ev_table);
     refreshProbs();
+    refreshMarbleDisplay();
   });
 }
 
@@ -407,6 +561,52 @@ function resetSetup() {
   document.getElementById('setupPanel').classList.remove('hidden');
   document.getElementById('gamePanel').classList.add('hidden');
   document.getElementById('resultPanel').classList.add('hidden');
+}
+
+function refreshMarbleDisplay() {
+  document.getElementById('currentMarblesVal').textContent = currentMarbles;
+}
+
+function adjustMarbles(delta) {
+  const newVal = Math.max(0, currentMarbles + delta);
+  fetch('/api/set_marbles', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({count: newVal})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) { showToast('❌ ' + data.error); return; }
+    currentMarbles = data.current_marbles;
+    refreshMarbleDisplay();
+  });
+}
+
+// 珠子数弹窗函数
+function openMarbleModal() {
+  document.getElementById('modalMarbleInput').value = currentMarbles;
+  document.getElementById('marbleModal').style.display = 'flex';
+}
+
+function closeMarbleModal() {
+  document.getElementById('marbleModal').style.display = 'none';
+}
+
+function saveMarbleCount() {
+  const newVal = parseInt(document.getElementById('modalMarbleInput').value) || 0;
+  fetch('/api/set_marbles', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({count: newVal})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) { showToast('❌ ' + data.error); return; }
+    currentMarbles = data.current_marbles;
+    refreshMarbleDisplay();
+    closeMarbleModal();
+    showToast('✓ 珠子数已更新');
+  });
 }
 
 // ─── Multiplier buttons ───
@@ -495,19 +695,35 @@ function getRecommendation() {
   .then(r => r.json())
   .then(data => {
     if (data.error) { showToast('❌ ' + data.error); return; }
-    const rec = data.recommendation;
+    lastRec = data.recommendation;
     document.getElementById('resultPanel').classList.remove('hidden');
-    document.getElementById('betAdvice').textContent = rec.optimal_bet + ' 颗';
-    document.getElementById('resWinProb').textContent = (rec.win_probability * 100).toFixed(2) + '%';
-    document.getElementById('resExpMarbles').textContent = rec.expected_marble_return.toFixed(2);
-    document.getElementById('resExpCards').textContent = rec.expected_score_cards.toFixed(4);
-    document.getElementById('resROI').textContent = rec.marble_roi.toFixed(4);
+    document.getElementById('betAdvice').textContent = lastRec.optimal_bet + ' 颗';
+    document.getElementById('resWinProb').textContent = (lastRec.win_probability * 100).toFixed(2) + '%';
+    document.getElementById('resExpMarbles').textContent = lastRec.expected_marble_return.toFixed(2);
+    document.getElementById('resExpCards').textContent = lastRec.expected_score_cards.toFixed(4);
+    document.getElementById('resROI').textContent = lastRec.marble_roi.toFixed(4);
+    document.getElementById('resMaxBet').textContent = lastRec.max_possible_bet;
+
+    // Update current marbles display from server
+    if (lastRec.current_marbles !== undefined) {
+      currentMarbles = lastRec.current_marbles;
+      refreshMarbleDisplay();
+    }
+
+    // Show warning if bet is limited by available marbles
+    const warning = document.getElementById('betWarning');
+    if (lastRec.max_possible_bet < lastRec.optimal_bet) {
+      warning.textContent = `⚠️ 珠子不足，已按可用珠子调整`;
+      warning.style.display = 'block';
+    } else {
+      warning.style.display = 'none';
+    }
 
     const tip = document.getElementById('resTip');
-    if (rec.marble_roi > 1) {
+    if (lastRec.marble_roi > 1) {
       tip.className = 'tip tip-good';
       tip.textContent = '✓ 期望正收益！建议多投';
-    } else if (rec.marble_roi === 1) {
+    } else if (lastRec.marble_roi === 1) {
       tip.className = 'tip tip-even';
       tip.textContent = '≈ 收支平衡';
     } else {
@@ -540,6 +756,34 @@ function recordSlot() {
   .then(r => r.json())
   .then(data => {
     if (data.error) { showToast('❌ ' + data.error); return; }
+    
+    // 更新珠子数
+    if (lastRec) {
+      const isWin = lastRec.lit_slots.includes(recordSlotSelected);
+      const actualBetInput = document.getElementById('inputActualBet');
+      const rawVal = actualBetInput ? parseInt(actualBetInput.value) : NaN;
+      const bet = (rawVal >= 5 && rawVal <= 99) ? rawVal : lastRec.optimal_bet;
+      
+      let delta = -bet; // 投注减去
+      if (isWin) {
+        delta += lastRec.multiplier * bet; // 中奖加上返珠
+      }
+      
+      // 更新珠子数
+      fetch('/api/update_marbles', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({delta: delta})
+      })
+      .then(r => r.json())
+      .then(data2 => {
+        if (!data2.error) {
+          currentMarbles = data2.current_marbles;
+          refreshMarbleDisplay();
+        }
+      });
+    }
+    
     showToast(`✓ 已记录槽位 ${recordSlotSelected+1}（共 ${data.total_plays} 局）`);
     refreshProbs();
     prepareNextRound();

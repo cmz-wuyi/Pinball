@@ -52,28 +52,55 @@ def api_init():
     """初始化机器参数，创建策略实例"""
     data = request.get_json(force=True)
     try:
-        T = int(data.get("T", 30))
-        J = int(data.get("J", 3))
+        # New tiered card rules (optional)
+        card_tiers = data.get("card_tiers")
+        if card_tiers:
+            # Parse custom card tiers: [[threshold, cards], ...]
+            card_tiers = [(int(t[0]), int(t[1])) for t in card_tiers]
+            # Validate
+            for t in card_tiers:
+                if t[0] < 1 or t[1] < 1:
+                    return jsonify({"error": "card_tiers 阈值和卡数必须 >= 1"}), 400
+            # Sort by threshold
+            card_tiers = sorted(card_tiers, key=lambda x: x[0])
+        
+        # Legacy T/J parameters (used if card_tiers not provided)
+        T = int(data.get("T", 20))
+        J = int(data.get("J", 10))
+        
         priority = data.get("priority", "cards")
         prior_weight = float(data.get("prior_weight", 24))
         confidence_threshold = float(data.get("confidence_threshold", 5))
+        current_marbles = int(data.get("current_marbles", 999))
+        max_bet = int(data.get("max_bet", MAX_BET))
 
-        if T < 1 or J < 1:
-            return jsonify({"error": "T 和 J 必须 >= 1"}), 400
         if priority not in ("cards", "marbles"):
             return jsonify({"error": "priority 必须为 cards 或 marbles"}), 400
         if confidence_threshold < 0:
             return jsonify({"error": "信心阈值不能为负数"}), 400
+        if current_marbles < 0:
+            return jsonify({"error": "当前珠子数不能为负数"}), 400
+        if not (MIN_BET <= max_bet <= MAX_BET):
+            return jsonify({"error": f"最大投珠数必须在 {MIN_BET}~{MAX_BET} 之间"}), 400
 
         strategy = PinballStrategy(
             T=T, J=J, priority=priority,
             prior_weight=prior_weight, confidence_threshold=confidence_threshold,
+            max_bet=max_bet, card_tiers=card_tiers, current_marbles=current_marbles,
         )
         _set_strategy(strategy)
 
         # 返回基准 EV 表
-        ev_table = PinballStrategy.expected_value_table(T, J)
-        return jsonify({"ok": True, "ev_table": ev_table, "T": T, "J": J, "priority": priority})
+        ev_table = PinballStrategy.expected_value_table(strategy.T, strategy.J)
+        return jsonify({
+            "ok": True, 
+            "ev_table": ev_table, 
+            "T": strategy.T, 
+            "J": strategy.J,
+            "card_tiers": [[t[0], t[1]] for t in strategy.card_tiers],
+            "priority": priority,
+            "current_marbles": current_marbles,
+        })
     except (ValueError, TypeError) as e:
         return jsonify({"error": str(e)}), 400
 
@@ -138,6 +165,60 @@ def api_probs():
         "ok": True,
         "total_plays": strategy.total_plays,
         "landing_probs": [round(p, 4) for p in strategy.get_landing_probs()],
+    })
+
+
+@app.route("/api/update_marbles", methods=["POST"])
+def api_update_marbles():
+    """更新当前珠子数量"""
+    strategy = _get_strategy()
+    if not strategy:
+        return jsonify({"error": "请先设置机器参数"}), 400
+    
+    data = request.get_json(force=True)
+    try:
+        delta = int(data.get("delta", 0))
+        strategy.update_marbles(delta)
+        return jsonify({
+            "ok": True,
+            "current_marbles": strategy.current_marbles,
+        })
+    except (ValueError, TypeError) as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/set_marbles", methods=["POST"])
+def api_set_marbles():
+    """直接设置当前珠子数量"""
+    strategy = _get_strategy()
+    if not strategy:
+        return jsonify({"error": "请先设置机器参数"}), 400
+    
+    data = request.get_json(force=True)
+    try:
+        count = int(data.get("count", 0))
+        if count < 0:
+            return jsonify({"error": "珠子数量不能为负数"}), 400
+        strategy.current_marbles = count
+        return jsonify({
+            "ok": True,
+            "current_marbles": strategy.current_marbles,
+        })
+    except (ValueError, TypeError) as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/analyze", methods=["GET"])
+def api_analyze():
+    """获取机器分析报告"""
+    strategy = _get_strategy()
+    if not strategy:
+        return jsonify({"error": "请先设置机器参数"}), 400
+    
+    analysis = strategy.get_machine_analysis()
+    return jsonify({
+        "ok": True,
+        "analysis": analysis,
     })
 
 
